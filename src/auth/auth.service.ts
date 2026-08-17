@@ -57,7 +57,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const { email, password } = dto;
     const user = await this.usersService.findByEmail(email);
-    if (!user) {
+    if (!user || !user.password) {
       throw new UnauthorizedException('invalid credentials');
     }
     const isPasswordMatch = await this.comparePassword(password, user.password);
@@ -95,6 +95,59 @@ export class AuthService {
         tokenHash,
       },
     });
+  }
+
+  async googleLogin(profile: {
+    googleId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    picture?: string;
+  }) {
+    let user = await this.usersService.findByEmail(profile.email);
+
+    if (!user) {
+      user = await this.usersService.create({
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        email: profile.email,
+        googleId: profile.googleId,
+        avatar: profile.picture,
+      });
+    }
+
+    if (!user.googleId) {
+      user = await this.usersService.addGoogleId(user.id, profile.googleId);
+    }
+
+    const access_token = await this.generateAccessToken({
+      sub: user.id,
+      email: user.email,
+    });
+
+    const refresh_token = await this.generateRefreshToken({
+      sub: user.id,
+      email: user.email,
+    });
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    const hashedRefreshToken = this.hashRefreshToken(refresh_token);
+
+    await this.prismaService.refreshToken.create({
+      data: {
+        tokenHash: hashedRefreshToken,
+        userId: user.id,
+        expiresAt,
+      },
+    });
+
+    return {
+      user: new UserResponseDto(user),
+      access_token,
+      refresh_token,
+    };
   }
 
   async refresh(refreshToken: string) {

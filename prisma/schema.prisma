@@ -13,12 +13,14 @@ model User {
   firstName String
   lastName  String
   email     String   @unique
-  password  String
-  bio String?
-  avatar String?
-  headline String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  password  String?
+  googleId  String?  @unique
+  bio       String?
+  avatar    String?
+  headline  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   refreshToken RefreshToken[]
 }
 

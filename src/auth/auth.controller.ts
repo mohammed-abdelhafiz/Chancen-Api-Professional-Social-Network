@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -13,10 +14,16 @@ import { AuthService } from './auth.service';
 import { type Request, type Response } from 'express';
 import { LoginDto } from './dtos/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { ConfigService } from '@nestjs/config';
+import { GoogleUser } from './types/google-user.type';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('register')
   async register(
@@ -72,6 +79,26 @@ export class AuthController {
       await this.authService.refresh(refreshToken);
     this.sendAccessToken(newAccessToken, res);
     this.sendRefreshToken(newRefreshToken, res);
+  }
+
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  loginWithGoogle() {}
+
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  async googleCallback(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { access_token, refresh_token } = await this.authService.googleLogin(
+      req.user as GoogleUser,
+    );
+
+    this.sendAccessToken(access_token, res);
+    this.sendRefreshToken(refresh_token, res);
+
+    return res.redirect(this.configService.getOrThrow('CLIENT_URL'));
   }
 
   private sendAccessToken(token: string, res: Response) {
