@@ -87,6 +87,16 @@ export class AuthService {
     return { user: new UserResponseDto(user), access_token, refresh_token };
   }
 
+  async logout(refreshToken: string) {
+    const tokenHash = this.hashRefreshToken(refreshToken);
+
+    await this.prismaService.refreshToken.deleteMany({
+      where: {
+        tokenHash,
+      },
+    });
+  }
+
   async refresh(refreshToken: string) {
     const hashedRefreshToken = this.hashRefreshToken(refreshToken);
     const storedRefreshToken = await this.prismaService.refreshToken.findUnique(

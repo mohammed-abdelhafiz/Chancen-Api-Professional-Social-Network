@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -13,9 +12,7 @@ import { RegisterDto } from './dtos/register.dto';
 import { AuthService } from './auth.service';
 import { type Request, type Response } from 'express';
 import { LoginDto } from './dtos/login.dto';
-import { AuthGuard } from '@nestjs/passport';
-import { currentUser } from './decorators/current-user.decorator';
-import { UserResponseDto } from 'src/users/dtos/user-response.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -46,10 +43,22 @@ export class AuthController {
     return user;
   }
 
-  @Get('me')
-  @UseGuards(AuthGuard('jwt'))
-  getMe(@currentUser() user: UserResponseDto) {
-    return user;
+  @HttpCode(HttpStatus.OK)
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = req.cookies?.refresh_token as string;
+
+    if (refreshToken) {
+      await this.authService.logout(refreshToken);
+    }
+
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+
+    return {
+      message: 'Logged out successfully',
+    };
   }
 
   @HttpCode(HttpStatus.OK)

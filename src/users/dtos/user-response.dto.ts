@@ -3,6 +3,8 @@ export class UserResponseDto {
   email: string;
   firstName: string;
   lastName: string;
+  bio: string | null;
+  headline: string | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -11,6 +13,8 @@ export class UserResponseDto {
     email: string;
     firstName: string;
     lastName: string;
+    bio: string | null;
+    headline: string | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -18,6 +22,8 @@ export class UserResponseDto {
     this.email = user.email;
     this.firstName = user.firstName;
     this.lastName = user.lastName;
+    this.bio = user.bio ?? null;
+    this.headline = user.headline ?? null;
     this.createdAt = user.createdAt;
     this.updatedAt = user.updatedAt;
   }
