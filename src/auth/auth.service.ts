@@ -7,7 +7,7 @@ import { RegisterDto } from './dtos/register.dto';
 import { UsersService } from 'src/users/users.service';
 import bcrypt from 'bcrypt';
 import { UserResponseDto } from 'src/users/dtos/user-response.dto';
-import { JwtService, JwtSignOptions } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { LoginDto } from './dtos/login.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -35,26 +35,14 @@ export class AuthService {
       email,
       password: hashedPassword,
     });
-    const access_token = await this.generateToken(
-      {
-        sub: newUser.id,
-        email: newUser.email,
-      },
-      {
-        expiresIn: this.configService.getOrThrow('ACCESS_TOKEN_EXPIRES_IN'),
-        secret: this.configService.getOrThrow('ACCESS_TOKEN_SECRET'),
-      },
-    );
-    const refresh_token = await this.generateToken(
-      {
-        sub: newUser.id,
-        email: newUser.email,
-      },
-      {
-        expiresIn: this.configService.getOrThrow('REFRESH_TOKEN_EXPIRES_IN'),
-        secret: this.configService.getOrThrow('REFRESH_TOKEN_SECRET'),
-      },
-    );
+    const access_token = await this.generateAccessToken({
+      sub: newUser.id,
+      email: newUser.email,
+    });
+    const refresh_token = await this.generateRefreshToken({
+      sub: newUser.id,
+      email: newUser.email,
+    });
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -76,27 +64,15 @@ export class AuthService {
     if (!isPasswordMatch) {
       throw new UnauthorizedException('invalid credentials');
     }
-    const access_token = await this.generateToken(
-      {
-        sub: user.id,
-        email: user.email,
-      },
-      {
-        expiresIn: this.configService.getOrThrow('ACCESS_TOKEN_EXPIRES_IN'),
-        secret: this.configService.getOrThrow('ACCESS_TOKEN_SECRET'),
-      },
-    );
+    const access_token = await this.generateAccessToken({
+      sub: user.id,
+      email: user.email,
+    });
 
-    const refresh_token = await this.generateToken(
-      {
-        sub: user.id,
-        email: user.email,
-      },
-      {
-        expiresIn: this.configService.getOrThrow('REFRESH_TOKEN_EXPIRES_IN'),
-        secret: this.configService.getOrThrow('REFRESH_TOKEN_SECRET'),
-      },
-    );
+    const refresh_token = await this.generateRefreshToken({
+      sub: user.id,
+      email: user.email,
+    });
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
@@ -111,6 +87,46 @@ export class AuthService {
     return { user: new UserResponseDto(user), access_token, refresh_token };
   }
 
+  async refresh(refreshToken: string) {
+    const hashedRefreshToken = this.hashRefreshToken(refreshToken);
+    const storedRefreshToken = await this.prismaService.refreshToken.findUnique(
+      {
+        where: { tokenHash: hashedRefreshToken },
+      },
+    );
+    if (!storedRefreshToken) {
+      throw new UnauthorizedException('invalid refresh token');
+    }
+    if (storedRefreshToken.expiresAt < new Date()) {
+      throw new UnauthorizedException('expired refresh token');
+    }
+    const userId = storedRefreshToken.userId;
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new UnauthorizedException('user not found');
+    }
+    const newAccessToken = await this.generateAccessToken({
+      sub: user.id,
+      email: user.email,
+    });
+    const newRefreshToken = await this.generateRefreshToken({
+      sub: user.id,
+      email: user.email,
+    });
+
+    await this.prismaService.refreshToken.update({
+      where: { tokenHash: hashedRefreshToken },
+      data: {
+        tokenHash: this.hashRefreshToken(newRefreshToken),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    return { newAccessToken, newRefreshToken };
+  }
+
   private hashPassword(password: string) {
     return bcrypt.hash(password, 10);
   }
@@ -122,10 +138,16 @@ export class AuthService {
     return createHash('sha256').update(refresh_token).digest('hex');
   }
 
-  private generateToken(
-    payload: { sub: string; email: string },
-    options: JwtSignOptions,
-  ) {
-    return this.jwtService.signAsync(payload, options);
+  private generateAccessToken(payload: { sub: string; email: string }) {
+    return this.jwtService.signAsync(payload, {
+      expiresIn: this.configService.getOrThrow('ACCESS_TOKEN_EXPIRES_IN'),
+      secret: this.configService.getOrThrow('ACCESS_TOKEN_SECRET'),
+    });
+  }
+  private generateRefreshToken(payload: { sub: string; email: string }) {
+    return this.jwtService.signAsync(payload, {
+      expiresIn: this.configService.getOrThrow('REFRESH_TOKEN_EXPIRES_IN'),
+      secret: this.configService.getOrThrow('REFRESH_TOKEN_SECRET'),
+    });
   }
 }
