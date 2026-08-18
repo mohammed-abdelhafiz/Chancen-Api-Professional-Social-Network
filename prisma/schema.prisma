@@ -16,12 +16,15 @@ model User {
   password  String?
   googleId  String?  @unique
   bio       String?
-  avatar    String?
   headline  String?
+  company String?
+  resume    Json?
+  avatar    Json?
+  coverPhoto Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshToken RefreshToken[]
+  refreshTokens RefreshToken[]
 }
 
 model RefreshToken {
