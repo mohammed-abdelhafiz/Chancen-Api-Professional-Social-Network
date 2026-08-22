@@ -13,7 +13,6 @@ import { RegisterDto } from './dtos/register.dto';
 import { AuthService } from './auth.service';
 import { type Request, type Response } from 'express';
 import { LoginDto } from './dtos/login.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { ConfigService } from '@nestjs/config';
 import { GoogleUser } from './types/google-user.type';
@@ -52,7 +51,6 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const refreshToken = req.cookies?.refresh_token as string;
 
@@ -60,8 +58,17 @@ export class AuthController {
       await this.authService.logout(refreshToken);
     }
 
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+    });
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      path: '/api/auth',
+    });
 
     return {
       message: 'Logged out successfully',
@@ -115,7 +122,7 @@ export class AuthController {
       sameSite: 'none',
       secure: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/api/auth/refresh',
+      path: '/api/auth',
     });
   }
 }
