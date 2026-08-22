@@ -7,7 +7,6 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-
 model User {
   id        String   @id @default(uuid())
   firstName String
@@ -15,16 +14,59 @@ model User {
   email     String   @unique
   password  String?
   googleId  String?  @unique
-  bio       String?
-  headline  String?
-  company String?
-  resume    Json?
-  avatar    Json?
+
+  bio        String?
+  headline   String?
+  company    String?
+  resume     Json?
+  avatar     Json?
   coverPhoto Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   refreshTokens RefreshToken[]
+
+  followers  Follow[] @relation("UserFollowers")
+  followings Follow[] @relation("UserFollowings")
+
+  sentConnections     Connection[] @relation("SentConnections")
+  receivedConnections Connection[] @relation("ReceivedConnections")
+}
+
+model Follow {
+  followerId  String
+  followingId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  follower User @relation(   "UserFollowings",   fields: [followerId],   references: [id],   onDelete: Cascade)
+
+  following User @relation(  "UserFollowers",  fields: [followingId],  references: [id],  onDelete: Cascade )
+
+  @@id([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+enum ConnectionStatus {
+  pending
+  accepted
+  rejected
+}
+
+model Connection {
+  senderId   String
+  receiverId String
+
+  status ConnectionStatus @default(pending)
+
+  sender User @relation( "SentConnections", fields: [senderId], references: [id])
+
+  receiver User @relation( "ReceivedConnections", fields: [receiverId],references: [id])
+
+  @@id([senderId, receiverId])
 }
 
 model RefreshToken {
@@ -33,7 +75,8 @@ model RefreshToken {
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
-  user      User      @relation(fields: [userId],references: [id],onDelete: Cascade)
+
+  user User @relation(  fields: [userId],  references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

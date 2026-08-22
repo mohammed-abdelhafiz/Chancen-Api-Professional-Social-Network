@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { UploadApiErrorResponse, UploadApiResponse } from 'cloudinary';
+import 'multer';
 
 import cloudinary from 'src/common/config/cloudinary.config';
 

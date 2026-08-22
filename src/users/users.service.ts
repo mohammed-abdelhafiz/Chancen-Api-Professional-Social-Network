@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateProfileDto } from './dtos/update-profile.dto';
 import { UserResponseDto } from './dtos/user-response.dto';
@@ -20,6 +20,14 @@ export class UsersService {
 
   create(user: Prisma.UserCreateInput) {
     return this.prismaService.user.create({ data: user });
+  }
+
+  delete(userId: string) {
+    return this.prismaService.user.delete({
+      where: {
+        id: userId,
+      },
+    });
   }
 
   addGoogleId(userId: string, googleId: string) {
@@ -129,5 +137,171 @@ export class UsersService {
       data,
     });
     return new UserResponseDto(updatedUser);
+  }
+  async follow(currentUserId: string, targetUserId: string) {
+    const follow = await this.prismaService.follow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: currentUserId,
+          followingId: targetUserId,
+        },
+      },
+    });
+
+    if (follow) {
+      await this.prismaService.follow.delete({
+        where: {
+          followerId_followingId: {
+            followerId: currentUserId,
+            followingId: targetUserId,
+          },
+        },
+      });
+
+      return {
+        message: 'Unfollowed successfully',
+      };
+    }
+
+    await this.prismaService.follow.create({
+      data: {
+        followerId: currentUserId,
+        followingId: targetUserId,
+      },
+    });
+
+    return {
+      message: 'Followed successfully',
+    };
+  }
+  async connect(currentUserId: string, targetUserId: string) {
+    const connection = await this.prismaService.connection.findUnique({
+      where: {
+        senderId_receiverId: {
+          senderId: currentUserId,
+          receiverId: targetUserId,
+        },
+      },
+    });
+
+    if (connection) {
+      await this.prismaService.connection.delete({
+        where: {
+          senderId_receiverId: {
+            senderId: currentUserId,
+            receiverId: targetUserId,
+          },
+        },
+      });
+
+      return {
+        message: 'Connection removed successfully',
+      };
+    }
+
+    await this.prismaService.connection.create({
+      data: {
+        senderId: currentUserId,
+        receiverId: targetUserId,
+      },
+    });
+
+    return {
+      message: 'Connected successfully',
+    };
+  }
+  async getConnectionRequests(userId: string) {
+    return this.prismaService.connection.findMany({
+      where: {
+        receiverId: userId,
+      },
+      include: {
+        sender: true,
+      },
+    });
+  }
+  async acceptRequest(userId: string, currentUserId: string) {
+    const connection = await this.prismaService.connection.findUnique({
+      where: {
+        senderId_receiverId: {
+          senderId: userId,
+          receiverId: currentUserId,
+        },
+      },
+    });
+    if (!connection) {
+      throw new NotFoundException('Connection request not found');
+    }
+    await this.prismaService.connection.update({
+      where: {
+        senderId_receiverId: {
+          senderId: userId,
+          receiverId: currentUserId,
+        },
+      },
+      data: {
+        status: 'accepted',
+      },
+    });
+    return {
+      message: 'Connection request accepted successfully',
+    };
+  }
+  async rejectRequest(userId: string, currentUserId: string) {
+    const connection = await this.prismaService.connection.findUnique({
+      where: {
+        senderId_receiverId: {
+          senderId: userId,
+          receiverId: currentUserId,
+        },
+      },
+    });
+    if (!connection) {
+      throw new NotFoundException('Connection request not found');
+    }
+    await this.prismaService.connection.delete({
+      where: {
+        senderId_receiverId: {
+          senderId: userId,
+          receiverId: currentUserId,
+        },
+      },
+    });
+    return {
+      message: 'Connection request rejected successfully',
+    };
+  }
+  async getConnections(userId: string) {
+    return this.prismaService.connection.findMany({
+      where: {
+        receiverId: userId,
+        status: 'accepted',
+      },
+      include: {
+        sender: true,
+      },
+    });
+  }
+
+  async getFollowers(userId: string) {
+    return this.prismaService.follow.findMany({
+      where: {
+        followingId: userId,
+      },
+      include: {
+        follower: true,
+      },
+    });
+  }
+
+  async getFollowing(userId: string) {
+    return this.prismaService.follow.findMany({
+      where: {
+        followerId: userId,
+      },
+      include: {
+        following: true,
+      },
+    });
   }
 }

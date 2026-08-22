@@ -9,6 +9,7 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   app.enableCors({
     origin: config.get<string>('CLIENT_URL'),
+    credentials: true,
   });
   app.use(cookieParser());
   app.useGlobalPipes(
