@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateProfileDto } from './dtos/update-profile.dto';
 import { UserResponseDto } from './dtos/user-response.dto';
@@ -175,40 +179,94 @@ export class UsersService {
     };
   }
   async connect(currentUserId: string, targetUserId: string) {
-    const connection = await this.prismaService.connection.findUnique({
-      where: {
-        senderId_receiverId: {
-          senderId: currentUserId,
-          receiverId: targetUserId,
-        },
-      },
-    });
+    if (currentUserId === targetUserId) {
+      throw new BadRequestException('You cannot connect with yourself');
+    }
 
-    if (connection) {
-      await this.prismaService.connection.delete({
-        where: {
-          senderId_receiverId: {
+    const connection = await this.prismaService.connection.findFirst({
+      where: {
+        OR: [
+          {
             senderId: currentUserId,
             receiverId: targetUserId,
           },
+          {
+            senderId: targetUserId,
+            receiverId: currentUserId,
+          },
+        ],
+      },
+    });
+
+    if (!connection) {
+      await this.prismaService.connection.create({
+        data: {
+          senderId: currentUserId,
+          receiverId: targetUserId,
         },
       });
 
       return {
-        message: 'Connection removed successfully',
+        message: 'Connection request sent successfully',
       };
     }
 
-    await this.prismaService.connection.create({
-      data: {
-        senderId: currentUserId,
-        receiverId: targetUserId,
-      },
-    });
+    // Current user sent the request
+    if (
+      connection.senderId === currentUserId &&
+      connection.receiverId === targetUserId
+    ) {
+      if (connection.status === 'pending') {
+        await this.prismaService.connection.delete({
+          where: {
+            senderId_receiverId: {
+              senderId: currentUserId,
+              receiverId: targetUserId,
+            },
+          },
+        });
 
-    return {
-      message: 'Connected successfully',
-    };
+        return {
+          message: 'Connection request cancelled successfully',
+        };
+      }
+
+      if (connection.status === 'accepted') {
+        return {
+          message: 'You are already connected',
+        };
+      }
+    }
+
+    // Target user already sent a request
+    if (
+      connection.senderId === targetUserId &&
+      connection.receiverId === currentUserId
+    ) {
+      if (connection.status === 'pending') {
+        await this.prismaService.connection.update({
+          where: {
+            senderId_receiverId: {
+              senderId: targetUserId,
+              receiverId: currentUserId,
+            },
+          },
+          data: {
+            status: 'accepted',
+          },
+        });
+
+        return {
+          message: 'Connection accepted successfully',
+        };
+      }
+
+      if (connection.status === 'accepted') {
+        return {
+          message: 'You are already connected',
+        };
+      }
+    }
   }
   async getConnectionRequests(userId: string) {
     return this.prismaService.connection.findMany({
