@@ -294,7 +294,7 @@ export class UsersService {
     });
   }
 
-  async getFollowing(userId: string) {
+  getFollowing(userId: string) {
     return this.prismaService.follow.findMany({
       where: {
         followerId: userId,
@@ -302,6 +302,18 @@ export class UsersService {
       include: {
         following: true,
       },
+    });
+  }
+
+  async getFollowSuggestions(currentUserId: string) {
+    const followingsIds = (
+      await this.prismaService.follow.findMany({
+        where: { followerId: currentUserId },
+      })
+    ).map((following) => following.followingId);
+    return this.prismaService.user.findMany({
+      where: { id: { notIn: [...followingsIds, currentUserId] } },
+      take: 3,
     });
   }
 }

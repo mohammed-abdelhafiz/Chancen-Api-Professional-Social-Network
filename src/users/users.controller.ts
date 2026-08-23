@@ -52,6 +52,12 @@ export class UsersController {
     return this.usersService.updateProfile(user, dto, files);
   }
 
+  @Get('follow-suggestions')
+  @UseGuards(JwtAuthGuard)
+  getFollowSuggestions(@currentUser() currentUser: UserResponseDto) {
+    return this.usersService.getFollowSuggestions(currentUser.id);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async getUser(@Param('id') id: string) {
