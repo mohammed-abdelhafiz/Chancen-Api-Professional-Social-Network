@@ -66,30 +66,11 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     client.leave(`conversation:${conversationId}`);
   }
 
-  @SubscribeMessage('sendMessage')
-  async handleSendMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: string; content: string },
-  ) {
-    const userId = client.handshake.auth?.userId;
-    if (!userId) return;
-
-    const message = await this.messagesService.sendMessage(
-      data.conversationId,
-      userId,
-      data.content,
-    );
-
-    this.server.to(`conversation:${data.conversationId}`).emit('newMessage', message);
-
-    return message;
+  broadcastToConversation(conversationId: string, message: any) {
+    this.server.to(`conversation:${conversationId}`).emit('newMessage', message);
   }
 
   sendNotificationToUser(userId: string, notification: any) {
     this.server.to(`user:${userId}`).emit('notification', notification);
-  }
-
-  sendNewMessageToUser(userId: string, message: any) {
-    this.server.to(`user:${userId}`).emit('newMessage', message);
   }
 }

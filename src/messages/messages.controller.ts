@@ -14,11 +14,15 @@ import { SendMessageDto } from './dtos/send-message.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { currentUser } from 'src/auth/decorators/current-user.decorator';
 import { UserResponseDto } from 'src/users/dtos/user-response.dto';
+import { MessagesGateway } from './gateways/messages.gateway';
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard)
 export class MessagesController {
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(
+    private readonly messagesService: MessagesService,
+    private readonly gateway: MessagesGateway,
+  ) {}
 
   @Get('conversations')
   getConversations(@currentUser() user: UserResponseDto) {
@@ -44,12 +48,14 @@ export class MessagesController {
   }
 
   @Post('conversations/:id')
-  sendMessage(
+  async sendMessage(
     @Param('id') id: string,
     @Body() dto: SendMessageDto,
     @currentUser() user: UserResponseDto,
   ) {
-    return this.messagesService.sendMessage(id, user.id, dto.content);
+    const message = await this.messagesService.sendMessage(id, user.id, dto.content);
+    this.gateway.broadcastToConversation(id, message);
+    return message;
   }
 
   @Get('unread')
