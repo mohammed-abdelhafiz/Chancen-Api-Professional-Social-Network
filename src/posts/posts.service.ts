@@ -5,12 +5,15 @@ import { UserResponseDto } from 'src/users/dtos/user-response.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from 'generated/prisma/client';
+import { NotificationsService } from 'src/notifications/notifications.service';
+import { NotificationType } from 'generated/prisma/client';
 
 @Injectable()
 export class PostsService {
   constructor(
     private readonly cloudinaryService: CloudinaryService,
     private readonly prismaService: PrismaService,
+    private readonly notificationsService: NotificationsService,
   ) {}
   async createPost(
     body: CreatePostDto,
@@ -144,6 +147,14 @@ export class PostsService {
     const count = await this.prismaService.postLike.count({
       where: { postId },
     });
+
+    await this.notificationsService.create(
+      post.userId,
+      NotificationType.like,
+      userId,
+      'liked your post',
+    );
+
     return { liked: true, likesCount: count, message: 'Post liked' };
   }
 
@@ -216,7 +227,7 @@ export class PostsService {
       data.content = '';
     }
 
-    return this.prismaService.comment.create({
+    const comment = await this.prismaService.comment.create({
       data,
       include: {
         user: {
@@ -235,6 +246,15 @@ export class PostsService {
         },
       },
     });
+
+    await this.notificationsService.create(
+      post.userId,
+      NotificationType.comment,
+      userId,
+      'commented on your post',
+    );
+
+    return comment;
   }
 
   async getComments(

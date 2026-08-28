@@ -8,12 +8,15 @@ import { UpdateProfileDto } from './dtos/update-profile.dto';
 import { UserResponseDto } from './dtos/user-response.dto';
 import { Prisma } from 'generated/prisma/client';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { NotificationsService } from 'src/notifications/notifications.service';
+import { NotificationType } from 'generated/prisma/client';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly notificationsService: NotificationsService,
   ) {}
   findByEmail(email: string) {
     return this.prismaService.user.findUnique({ where: { email } });
@@ -174,6 +177,13 @@ export class UsersService {
       },
     });
 
+    await this.notificationsService.create(
+      targetUserId,
+      NotificationType.follow,
+      currentUserId,
+      'started following you',
+    );
+
     return {
       message: 'Followed successfully',
     };
@@ -205,6 +215,13 @@ export class UsersService {
           receiverId: targetUserId,
         },
       });
+
+      await this.notificationsService.create(
+        targetUserId,
+        NotificationType.connection_request,
+        currentUserId,
+        'sent you a connection request',
+      );
 
       return {
         message: 'Connection request sent successfully',
@@ -301,6 +318,14 @@ export class UsersService {
         status: 'accepted',
       },
     });
+
+    await this.notificationsService.create(
+      userId,
+      NotificationType.connection_accepted,
+      currentUserId,
+      'accepted your connection request',
+    );
+
     return {
       message: 'Connection request accepted successfully',
     };
