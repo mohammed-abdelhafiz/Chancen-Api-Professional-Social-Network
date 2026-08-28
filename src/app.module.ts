@@ -4,6 +4,9 @@ import { PrismaModule } from './prisma/prisma.module';
 import { Module } from '@nestjs/common';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { UsersModule } from './users/users.module';
+import { PostsModule } from './posts/posts.module';
+import { JobsModule } from './jobs/jobs.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -12,6 +15,9 @@ import { UsersModule } from './users/users.module';
     }),
     AuthModule,
     UsersModule,
+    PostsModule,
+    JobsModule,
+    MessagesModule,
     PrismaModule,
     CloudinaryModule,
   ],

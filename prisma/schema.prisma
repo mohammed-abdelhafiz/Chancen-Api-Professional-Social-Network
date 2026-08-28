@@ -36,6 +36,16 @@ model User {
 
   sentConnections     Connection[] @relation("SentConnections")
   receivedConnections Connection[] @relation("ReceivedConnections")
+
+  jobs         Job[]
+  jobApplications JobApplication[]
+
+  conversations1 Conversation[] @relation("ConversationUser1")
+  conversations2 Conversation[] @relation("ConversationUser2")
+  sentMessages   Message[]
+
+  notifications  Notification[] @relation("NotificationUser")
+  sentNotifications Notification[] @relation("NotificationSender")
 }
 
 model Follow {
@@ -91,7 +101,7 @@ model RefreshToken {
 
 model Post {
   id        String   @id @default(uuid())
-  content   String
+  content   String?
   image     Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -144,4 +154,129 @@ model CommentLike {
   @@unique([commentId, userId])
   @@index([userId])
   @@index([commentId])
+}
+
+enum JobType {
+  full_time
+  part_time
+  contract
+  internship
+  remote
+}
+
+enum JobStatus {
+  open
+  closed
+  draft
+}
+
+model Job {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  company     String
+  location    String?
+  type        JobType  @default(full_time)
+  salary      String?
+  requirements String?
+  benefits    String?
+  status      JobStatus @default(open)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applications JobApplication[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+  @@index([type])
+}
+
+enum ApplicationStatus {
+  pending
+  accepted
+  rejected
+}
+
+model JobApplication {
+  id          String          @id @default(uuid())
+  coverLetter String?
+  status      ApplicationStatus @default(pending)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  userId      String
+  jobId       String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+  @@index([status])
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user1Id String
+  user2Id String
+
+  user1 User @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2 User @relation("ConversationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  content        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  conversationId String
+  senderId       String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  like
+  comment
+  follow
+  connection_request
+  connection_accepted
+  message
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  content   String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  userId    String
+  senderId  String?
+
+  sender User? @relation("NotificationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  user   User @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([senderId])
+  @@index([read])
+  @@index([createdAt])
 }
