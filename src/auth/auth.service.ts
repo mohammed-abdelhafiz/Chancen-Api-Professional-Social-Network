@@ -179,10 +179,15 @@ export class AuthService {
       email: user.email,
     });
 
-    await this.prismaService.refreshToken.update({
+    await this.prismaService.refreshToken.upsert({
       where: { tokenHash: hashedRefreshToken },
-      data: {
+      update: {
         tokenHash: this.hashRefreshToken(newRefreshToken),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+      create: {
+        tokenHash: this.hashRefreshToken(newRefreshToken),
+        userId: user.id,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
