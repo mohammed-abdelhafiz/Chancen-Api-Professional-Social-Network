@@ -16,7 +16,7 @@ export class NotificationsService {
     type: NotificationType,
     senderId?: string,
     content?: string,
-    _link?: string,
+    link?: string,
   ) {
     if (userId === senderId) return null;
 
@@ -26,6 +26,7 @@ export class NotificationsService {
         type,
         senderId,
         content,
+        link,
       },
       include: {
         sender: {
