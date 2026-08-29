@@ -105,6 +105,7 @@ model RefreshToken {
 model Post {
   id        String   @id @default(uuid())
   content   String?
+  link      String?
   image     Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -117,6 +118,7 @@ model Post {
 
   @@index([userId])
   @@index([createdAt])
+  @@index([link])
 }
 
 model Comment {
@@ -133,6 +135,7 @@ model Comment {
 
   @@index([postId])
   @@index([userId])
+  @@index([createdAt])
 }
 
 model PostLike {
@@ -230,6 +233,8 @@ model Conversation {
 
   user1Id String
   user2Id String
+  user1LastReadAt DateTime?
+  user2LastReadAt DateTime?
 
   user1 User @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
   user2 User @relation("ConversationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
@@ -265,6 +270,7 @@ enum NotificationType {
   connection_request
   connection_accepted
   message
+  job_application
 }
 
 model Notification {
@@ -298,6 +304,7 @@ model Bookmark {
   @@unique([userId, postId])
   @@index([userId])
   @@index([postId])
+  @@index([createdAt])
 }
 
 model Repost {
