@@ -7,10 +7,15 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateJobDto } from './dtos/create-job.dto';
 import { UpdateJobDto } from './dtos/update-job.dto';
+import { NotificationsService } from 'src/notifications/notifications.service';
+import { NotificationType } from 'generated/prisma/client';
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async create(userId: string, dto: CreateJobDto) {
     return this.prismaService.job.create({
@@ -160,7 +165,9 @@ export class JobsService {
   }
 
   async apply(jobId: string, userId: string, coverLetter?: string) {
-    const job = await this.prismaService.job.findUnique({ where: { id: jobId } });
+    const job = await this.prismaService.job.findUnique({
+      where: { id: jobId },
+    });
 
     if (!job) {
       throw new NotFoundException('Job not found');
@@ -170,9 +177,10 @@ export class JobsService {
       throw new BadRequestException('You cannot apply to your own job');
     }
 
-    const existingApplication = await this.prismaService.jobApplication.findUnique({
-      where: { userId_jobId: { userId, jobId } },
-    });
+    const existingApplication =
+      await this.prismaService.jobApplication.findUnique({
+        where: { userId_jobId: { userId, jobId } },
+      });
 
     if (existingApplication) {
       throw new BadRequestException('You have already applied to this job');
@@ -198,14 +206,18 @@ export class JobsService {
   }
 
   async getApplications(jobId: string, userId: string) {
-    const job = await this.prismaService.job.findUnique({ where: { id: jobId } });
+    const job = await this.prismaService.job.findUnique({
+      where: { id: jobId },
+    });
 
     if (!job) {
       throw new NotFoundException('Job not found');
     }
 
     if (job.userId !== userId) {
-      throw new ForbiddenException('You can only view applications for your own jobs');
+      throw new ForbiddenException(
+        'You can only view applications for your own jobs',
+      );
     }
 
     return this.prismaService.jobApplication.findMany({
@@ -230,6 +242,15 @@ export class JobsService {
     return this.prismaService.job.findMany({
       where: { userId },
       include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            headline: true,
+          },
+        },
         _count: {
           select: { applications: true },
         },
@@ -260,5 +281,59 @@ export class JobsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async updateApplicationStatus(
+    jobId: string,
+    applicationId: string,
+    userId: string,
+    status: 'pending' | 'accepted' | 'rejected',
+  ) {
+    const job = await this.prismaService.job.findUnique({
+      where: { id: jobId },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+    if (job.userId !== userId)
+      throw new ForbiddenException(
+        'You can only update applications for your own jobs',
+      );
+
+    const application = await this.prismaService.jobApplication.findUnique({
+      where: { id: applicationId },
+    });
+    if (!application || application.jobId !== jobId) {
+      throw new NotFoundException('Application not found');
+    }
+
+    const updated = await this.prismaService.jobApplication.update({
+      where: { id: applicationId },
+      data: { status },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            headline: true,
+          },
+        },
+        job: { select: { id: true, title: true } },
+      },
+    });
+
+    try {
+      await this.notificationsService.create(
+        updated.userId,
+        NotificationType.job_application,
+        userId,
+        `your application for ${updated.job.title} was ${status}`,
+        `/jobs/${jobId}`,
+      );
+    } catch {
+      // Ignored if notification creation fails
+    }
+
+    return updated;
   }
 }

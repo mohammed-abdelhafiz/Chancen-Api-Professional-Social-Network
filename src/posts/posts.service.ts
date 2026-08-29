@@ -1,5 +1,11 @@
-﻿import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { CreatePostDto } from './dtos/create-post.dto';
+import { UpdatePostDto } from './dtos/update-post.dto';
 import { CreateCommentDto } from './dtos/create-comment.dto';
 import { UserResponseDto } from 'src/users/dtos/user-response.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
@@ -61,6 +67,94 @@ export class PostsService {
   async getPosts(page: number, limit: number, currentUserId?: string) {
     const safePage = Math.max(1, Math.floor(page) || 1);
     const safeLimit = Math.min(Math.max(1, Math.floor(limit) || 10), 50);
+    // Fetch enough records from each stream to build a single chronological feed.
+    // A repost is an independent feed event, rather than just a counter on its post.
+    const streamSize = safePage * safeLimit;
+    const postInclude = {
+      user: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          avatar: true,
+          headline: true,
+        },
+      },
+      _count: {
+        select: {
+          postLikes: true,
+          comments: true,
+          reposts: true,
+          bookmarks: true,
+        },
+      },
+      ...(currentUserId
+        ? {
+            postLikes: { where: { userId: currentUserId }, select: { id: true } },
+            reposts: { where: { userId: currentUserId }, select: { id: true } },
+            bookmarks: { where: { userId: currentUserId }, select: { id: true } },
+          }
+        : {}),
+    };
+    const [posts, reposts] = await Promise.all([
+      this.prismaService.post.findMany({
+        take: streamSize,
+        orderBy: { createdAt: 'desc' },
+        include: postInclude,
+      }),
+      this.prismaService.repost.findMany({
+        take: streamSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: { id: true, firstName: true, lastName: true, avatar: true, headline: true },
+          },
+          post: { include: postInclude },
+        },
+      }),
+    ]);
+
+    const mapPost = (post: any) => ({
+      ...post,
+      isLiked: currentUserId ? post.postLikes?.length > 0 : false,
+      isReposted: currentUserId ? post.reposts?.length > 0 : false,
+      isBookmarked: currentUserId ? post.bookmarks?.length > 0 : false,
+      postLikes: undefined,
+      reposts: undefined,
+      bookmarks: undefined,
+    });
+
+    const items = [
+      ...posts.map((post: any) => ({
+        ...mapPost(post),
+        feedItemId: `post-${post.id}`,
+        feedCreatedAt: post.createdAt,
+      })),
+      ...reposts.map((repost: any) => ({
+        ...mapPost(repost.post),
+        feedItemId: `repost-${repost.id}`,
+        feedCreatedAt: repost.createdAt,
+        repost: {
+          id: repost.id,
+          content: repost.content,
+          createdAt: repost.createdAt,
+          user: repost.user,
+        },
+      })),
+    ]
+      .sort(
+        (left, right) =>
+          new Date(right.feedCreatedAt).getTime() -
+          new Date(left.feedCreatedAt).getTime(),
+      )
+      .slice((safePage - 1) * safeLimit, safePage * safeLimit);
+
+    return {
+      posts: items,
+      nextPage: items.length === safeLimit ? safePage + 1 : undefined,
+    };
+
+    /*
     const posts = await this.prismaService.post.findMany({
       skip: (safePage - 1) * safeLimit,
       take: safeLimit,
@@ -81,11 +175,21 @@ export class PostsService {
           select: {
             postLikes: true,
             comments: true,
+            reposts: true,
+            bookmarks: true,
           },
         },
         ...(currentUserId
           ? {
               postLikes: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+              reposts: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+              bookmarks: {
                 where: { userId: currentUserId },
                 select: { id: true },
               },
@@ -97,7 +201,197 @@ export class PostsService {
     const mapped = posts.map((post: any) => ({
       ...post,
       isLiked: currentUserId ? post.postLikes?.length > 0 : false,
+      isReposted: currentUserId ? post.reposts?.length > 0 : false,
+      isBookmarked: currentUserId ? post.bookmarks?.length > 0 : false,
       postLikes: undefined,
+      reposts: undefined,
+      bookmarks: undefined,
+    }));
+
+    return {
+      posts: mapped,
+      nextPage: posts.length === safeLimit ? safePage + 1 : undefined,
+    };
+    */
+  }
+
+  async getPostById(postId: string, currentUserId?: string) {
+    const post = await this.prismaService.post.findUnique({
+      where: { id: postId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            headline: true,
+          },
+        },
+        _count: {
+          select: {
+            postLikes: true,
+            comments: true,
+            reposts: true,
+            bookmarks: true,
+          },
+        },
+        ...(currentUserId
+          ? {
+              postLikes: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+              reposts: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+              bookmarks: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+            }
+          : {}),
+      },
+    });
+    if (!post) throw new NotFoundException('Post not found');
+    return {
+      ...(post as any),
+      isLiked: currentUserId ? (post as any).postLikes?.length > 0 : false,
+      isReposted: currentUserId ? (post as any).reposts?.length > 0 : false,
+      isBookmarked: currentUserId ? (post as any).bookmarks?.length > 0 : false,
+      postLikes: undefined,
+      reposts: undefined,
+      bookmarks: undefined,
+    };
+  }
+
+  async updatePost(
+    postId: string,
+    userId: string,
+    dto: UpdatePostDto,
+    imageFile?: Express.Multer.File,
+  ) {
+    const post = await this.prismaService.post.findUnique({
+      where: { id: postId },
+    });
+    if (!post) throw new NotFoundException('Post not found');
+    if (post.userId !== userId)
+      throw new ForbiddenException('You can only edit your own posts');
+    if (!dto.content && !imageFile && !post.image) {
+      throw new BadRequestException('content or image is required');
+    }
+    const data: Prisma.PostUpdateInput = {};
+    if (dto.content !== undefined) data.content = dto.content.trim();
+    if (imageFile) {
+      const oldImage = post.image as {
+        publicId?: string;
+        resourceType?: string;
+      } | null;
+      if (oldImage?.publicId) {
+        try {
+          await this.cloudinaryService.deleteFile(
+            oldImage.publicId,
+            (oldImage.resourceType as 'image' | 'raw') || 'image',
+          );
+        } catch {
+          // Ignored if cloudinary file deletion fails
+        }
+      }
+      const result = await this.cloudinaryService.uploadFile(
+        imageFile,
+        'chancen/posts',
+        'image',
+      );
+      data.image = {
+        url: result.secure_url,
+        publicId: result.public_id,
+        resourceType: result.resource_type,
+      };
+    }
+    return this.prismaService.post.update({
+      where: { id: postId },
+      data,
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            headline: true,
+          },
+        },
+        _count: {
+          select: {
+            postLikes: true,
+            comments: true,
+            reposts: true,
+            bookmarks: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getPostsByUser(
+    userId: string,
+    page: number,
+    limit: number,
+    currentUserId?: string,
+  ) {
+    const safePage = Math.max(1, Math.floor(page) || 1);
+    const safeLimit = Math.min(Math.max(1, Math.floor(limit) || 10), 50);
+    const posts = await this.prismaService.post.findMany({
+      where: { userId },
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            headline: true,
+          },
+        },
+        _count: {
+          select: {
+            postLikes: true,
+            comments: true,
+            reposts: true,
+            bookmarks: true,
+          },
+        },
+        ...(currentUserId
+          ? {
+              postLikes: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+              reposts: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+              bookmarks: {
+                where: { userId: currentUserId },
+                select: { id: true },
+              },
+            }
+          : {}),
+      },
+    });
+
+    const mapped = posts.map((post: any) => ({
+      ...post,
+      isLiked: currentUserId ? post.postLikes?.length > 0 : false,
+      isReposted: currentUserId ? post.reposts?.length > 0 : false,
+      isBookmarked: currentUserId ? post.bookmarks?.length > 0 : false,
+      postLikes: undefined,
+      reposts: undefined,
+      bookmarks: undefined,
     }));
 
     return {
@@ -153,6 +447,7 @@ export class PostsService {
       NotificationType.like,
       userId,
       'liked your post',
+      `/posts/${postId}`,
     );
 
     return { liked: true, likesCount: count, message: 'Post liked' };
@@ -166,17 +461,24 @@ export class PostsService {
       throw new NotFoundException('Post not found');
     }
     if (post.userId !== userId) {
-      throw new ForbiddenException('You are not authorized to delete this post');
+      throw new ForbiddenException(
+        'You are not authorized to delete this post',
+      );
     }
 
-    const image = post.image as { publicId?: string; resourceType?: string } | null;
+    const image = post.image as {
+      publicId?: string;
+      resourceType?: string;
+    } | null;
     if (image?.publicId) {
       try {
         await this.cloudinaryService.deleteFile(
           image.publicId,
           (image.resourceType as 'image' | 'raw') || 'image',
         );
-      } catch {}
+      } catch {
+        // Ignored if cloudinary file deletion fails
+      }
     }
 
     await this.prismaService.post.delete({
@@ -252,6 +554,7 @@ export class PostsService {
       NotificationType.comment,
       userId,
       'commented on your post',
+      `/posts/${postId}`,
     );
 
     return comment;
@@ -368,16 +671,23 @@ export class PostsService {
       throw new NotFoundException('Comment not found');
     }
     if (comment.userId !== userId) {
-      throw new ForbiddenException('You are not authorized to delete this comment');
+      throw new ForbiddenException(
+        'You are not authorized to delete this comment',
+      );
     }
-    const image = comment.image as { publicId?: string; resourceType?: string } | null;
+    const image = comment.image as {
+      publicId?: string;
+      resourceType?: string;
+    } | null;
     if (image?.publicId) {
       try {
         await this.cloudinaryService.deleteFile(
           image.publicId,
           (image.resourceType as 'image' | 'raw') || 'image',
         );
-      } catch {}
+      } catch {
+        // Ignored if cloudinary file deletion fails
+      }
     }
     await this.prismaService.comment.delete({
       where: { id: commentId },
@@ -385,4 +695,3 @@ export class PostsService {
     return { message: 'Comment deleted successfully' };
   }
 }
-

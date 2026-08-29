@@ -6,46 +6,55 @@ import {
   Param,
   Query,
   UseGuards,
-  Req,
   Body,
+  ParseUUIDPipe,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { RepostsService } from './reposts.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { currentUser } from 'src/auth/decorators/current-user.decorator';
+import { UserResponseDto } from 'src/users/dtos/user-response.dto';
+import { CreateRepostDto } from './dtos/create-repost.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('reposts')
 @UseGuards(JwtAuthGuard)
 export class RepostsController {
   constructor(private readonly repostsService: RepostsService) {}
 
+  @Throttle({ short: { ttl: 60000, limit: 20 } })
   @Post(':postId')
   createRepost(
-    @Req() req: any,
-    @Param('postId') postId: string,
-    @Body('content') content?: string,
+    @currentUser() user: UserResponseDto,
+    @Param('postId', ParseUUIDPipe) postId: string,
+    @Body() dto: CreateRepostDto,
   ) {
-    return this.repostsService.createRepost(req.user.id, postId, content);
+    return this.repostsService.createRepost(user.id, postId, dto.content);
   }
 
   @Delete(':postId')
-  deleteRepost(@Req() req: any, @Param('postId') postId: string) {
-    return this.repostsService.deleteRepost(req.user.id, postId);
+  deleteRepost(
+    @currentUser() user: UserResponseDto,
+    @Param('postId', ParseUUIDPipe) postId: string,
+  ) {
+    return this.repostsService.deleteRepost(user.id, postId);
   }
 
   @Get(':postId')
   getReposts(
-    @Param('postId') postId: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Param('postId', ParseUUIDPipe) postId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.repostsService.getReposts(
-      postId,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-    );
+    return this.repostsService.getReposts(postId, page, limit);
   }
 
   @Get(':postId/check')
-  hasReposted(@Req() req: any, @Param('postId') postId: string) {
-    return this.repostsService.hasReposted(req.user.id, postId);
+  hasReposted(
+    @currentUser() user: UserResponseDto,
+    @Param('postId', ParseUUIDPipe) postId: string,
+  ) {
+    return this.repostsService.hasReposted(user.id, postId);
   }
 }

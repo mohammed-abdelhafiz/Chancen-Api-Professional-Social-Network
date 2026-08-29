@@ -3,26 +3,31 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
   Query,
   UseGuards,
   ParseIntPipe,
+  ParseUUIDPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dtos/create-job.dto';
 import { UpdateJobDto } from './dtos/update-job.dto';
 import { ApplyToJobDto } from './dtos/apply-to-job.dto';
+import { UpdateApplicationStatusDto } from './dtos/update-application-status.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { currentUser } from 'src/auth/decorators/current-user.decorator';
 import { UserResponseDto } from 'src/users/dtos/user-response.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('jobs')
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
+  @Throttle({ short: { ttl: 60000, limit: 10 } })
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateJobDto, @currentUser() user: UserResponseDto) {
@@ -52,14 +57,14 @@ export class JobsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.jobsService.findOne(id);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateJobDto,
     @currentUser() user: UserResponseDto,
   ) {
@@ -68,14 +73,18 @@ export class JobsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(@Param('id') id: string, @currentUser() user: UserResponseDto) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @currentUser() user: UserResponseDto,
+  ) {
     return this.jobsService.remove(id, user.id);
   }
 
+  @Throttle({ short: { ttl: 60000, limit: 20 } })
   @Post(':id/apply')
   @UseGuards(JwtAuthGuard)
   apply(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ApplyToJobDto,
     @currentUser() user: UserResponseDto,
   ) {
@@ -84,7 +93,26 @@ export class JobsController {
 
   @Get(':id/applications')
   @UseGuards(JwtAuthGuard)
-  getApplications(@Param('id') id: string, @currentUser() user: UserResponseDto) {
+  getApplications(
+    @Param('id', ParseUUIDPipe) id: string,
+    @currentUser() user: UserResponseDto,
+  ) {
     return this.jobsService.getApplications(id, user.id);
+  }
+
+  @Patch(':id/applications/:applicationId')
+  @UseGuards(JwtAuthGuard)
+  updateApplicationStatus(
+    @Param('id', ParseUUIDPipe) jobId: string,
+    @Param('applicationId', ParseUUIDPipe) applicationId: string,
+    @Body() dto: UpdateApplicationStatusDto,
+    @currentUser() user: UserResponseDto,
+  ) {
+    return this.jobsService.updateApplicationStatus(
+      jobId,
+      applicationId,
+      user.id,
+      dto.status,
+    );
   }
 }

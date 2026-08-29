@@ -1,9 +1,18 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationsService } from 'src/notifications/notifications.service';
+import { NotificationType } from 'generated/prisma/client';
 
 @Injectable()
 export class RepostsService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async createRepost(userId: string, postId: string, content?: string) {
     const post = await this.prismaService.post.findUnique({
@@ -26,7 +35,7 @@ export class RepostsService {
       throw new ConflictException('You have already reposted this post');
     }
 
-    return this.prismaService.repost.create({
+    const repost = await this.prismaService.repost.create({
       data: {
         userId,
         postId,
@@ -57,6 +66,20 @@ export class RepostsService {
         },
       },
     });
+
+    try {
+      await this.notificationsService.create(
+        repost.post.userId,
+        NotificationType.like,
+        userId,
+        'reposted your post',
+        `/posts/${postId}`,
+      );
+    } catch {
+      // Ignored if notification delivery fails
+    }
+
+    return repost;
   }
 
   async deleteRepost(userId: string, postId: string) {

@@ -2,13 +2,17 @@ import {
   BadRequestException,
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   ForbiddenException,
   Get,
   NotFoundException,
   Param,
+  ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
@@ -60,7 +64,7 @@ export class UsersController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  async getUser(@Param('id') id: string) {
+  async getUser(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.usersService.findById(id);
     if (!user) {
       throw new NotFoundException(`User with id ${id} not found`);
@@ -71,7 +75,7 @@ export class UsersController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   async deleteUser(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @currentUser() user: UserResponseDto,
   ) {
     if (id !== user.id) {
@@ -83,10 +87,11 @@ export class UsersController {
     await this.usersService.delete(id);
     return { message: `User with id ${id} deleted successfully` };
   }
+
   @Post(':userId/follow')
   @UseGuards(JwtAuthGuard)
   followUser(
-    @Param('userId') userId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @currentUser() currentUser: UserResponseDto,
   ) {
     if (currentUser.id === userId) {
@@ -98,7 +103,7 @@ export class UsersController {
   @Post(':userId/connect')
   @UseGuards(JwtAuthGuard)
   connect(
-    @Param('userId') userId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @currentUser() currentUser: UserResponseDto,
   ) {
     if (currentUser.id === userId) {
@@ -107,10 +112,19 @@ export class UsersController {
     return this.usersService.connect(currentUser.id, userId);
   }
 
+  @Get(':userId/connection-status')
+  @UseGuards(JwtAuthGuard)
+  getConnectionStatus(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @currentUser() currentUser: UserResponseDto,
+  ) {
+    return this.usersService.getConnectionStatus(currentUser.id, userId);
+  }
+
   @Get(':userId/connectionRequests')
   @UseGuards(JwtAuthGuard)
   getConnectionRequests(
-    @Param('userId') userId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @currentUser() currentUser: UserResponseDto,
   ) {
     if (currentUser.id !== userId) {
@@ -121,48 +135,59 @@ export class UsersController {
     return this.usersService.getConnectionRequests(userId);
   }
 
-  @Post(':userId/accept')
+  @Post(':senderId/accept')
   @UseGuards(JwtAuthGuard)
   acceptRequest(
-    @Param('userId') userId: string,
+    @Param('senderId', ParseUUIDPipe) senderId: string,
     @currentUser() currentUser: UserResponseDto,
   ) {
-    if (currentUser.id !== userId) {
-      throw new ForbiddenException(
-        'You are not authorized to accept connection requests for this user',
-      );
+    if (currentUser.id === senderId) {
+      throw new BadRequestException("you can't accept your own request");
     }
-    return this.usersService.acceptRequest(userId, currentUser.id);
+    return this.usersService.acceptRequest(senderId, currentUser.id);
   }
-  @Post(':userId/reject')
+
+  @Post(':senderId/reject')
   @UseGuards(JwtAuthGuard)
   rejectRequest(
-    @Param('userId') userId: string,
+    @Param('senderId', ParseUUIDPipe) senderId: string,
     @currentUser() currentUser: UserResponseDto,
   ) {
-    if (currentUser.id !== userId) {
-      throw new ForbiddenException(
-        'You are not authorized to reject connection requests for this user',
-      );
+    if (currentUser.id === senderId) {
+      throw new BadRequestException("you can't reject your own request");
     }
-    return this.usersService.rejectRequest(userId, currentUser.id);
+    return this.usersService.rejectRequest(senderId, currentUser.id);
+  }
+
+  @Get(':userId/stats')
+  @UseGuards(JwtAuthGuard)
+  getUserStats(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.usersService.getUserStats(userId);
   }
 
   @Get(':userId/connections')
   @UseGuards(JwtAuthGuard)
-  getConnections(@Param('userId') userId: string) {
+  getConnections(@Param('userId', ParseUUIDPipe) userId: string) {
     return this.usersService.getConnections(userId);
   }
 
   @Get(':userId/followers')
   @UseGuards(JwtAuthGuard)
-  getFollowers(@Param('userId') userId: string) {
-    return this.usersService.getFollowers(userId);
+  getFollowers(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.usersService.getFollowers(userId, page, limit);
   }
 
   @Get(':userId/following')
   @UseGuards(JwtAuthGuard)
-  getFollowing(@Param('userId') userId: string) {
-    return this.usersService.getFollowing(userId);
+  getFollowing(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.usersService.getFollowing(userId, page, limit);
   }
 }

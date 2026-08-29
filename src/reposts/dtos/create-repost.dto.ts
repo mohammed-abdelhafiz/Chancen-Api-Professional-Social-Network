@@ -1,8 +1,8 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
-export class CreatePostDto {
-  @IsString()
+export class CreateRepostDto {
   @IsOptional()
-  @MaxLength(3000)
+  @IsString()
+  @MaxLength(1000)
   content?: string;
 }

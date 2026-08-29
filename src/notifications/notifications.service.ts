@@ -1,20 +1,32 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { NotificationType } from 'generated/prisma/client';
+import { MessagesGateway } from 'src/messages/gateways/messages.gateway';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => MessagesGateway))
+    private gateway?: MessagesGateway,
+  ) {}
 
-  async create(userId: string, type: NotificationType, senderId?: string, content?: string) {
+  async create(
+    userId: string,
+    type: NotificationType,
+    senderId?: string,
+    content?: string,
+    link?: string,
+  ) {
     if (userId === senderId) return null;
 
-    return this.prisma.notification.create({
+    const notification = await this.prisma.notification.create({
       data: {
         userId,
         type,
         senderId,
         content,
+        link,
       },
       include: {
         sender: {
@@ -28,6 +40,14 @@ export class NotificationsService {
         },
       },
     });
+
+    try {
+      this.gateway?.sendNotificationToUser(userId, notification);
+    } catch {
+      // Ignored if socket gateway emission fails
+    }
+
+    return notification;
   }
 
   async findAll(userId: string, page = 1, limit = 20) {

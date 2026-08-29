@@ -5,10 +5,14 @@ import {
   Param,
   Query,
   UseGuards,
-  Req,
+  ParseUUIDPipe,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { BookmarksService } from './bookmarks.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { currentUser } from 'src/auth/decorators/current-user.decorator';
+import { UserResponseDto } from 'src/users/dtos/user-response.dto';
 
 @Controller('bookmarks')
 @UseGuards(JwtAuthGuard)
@@ -16,25 +20,27 @@ export class BookmarksController {
   constructor(private readonly bookmarksService: BookmarksService) {}
 
   @Post(':postId/toggle')
-  toggleBookmark(@Req() req: any, @Param('postId') postId: string) {
-    return this.bookmarksService.toggleBookmark(req.user.id, postId);
+  toggleBookmark(
+    @currentUser() user: UserResponseDto,
+    @Param('postId', ParseUUIDPipe) postId: string,
+  ) {
+    return this.bookmarksService.toggleBookmark(user.id, postId);
   }
 
   @Get()
   getBookmarks(
-    @Req() req: any,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @currentUser() user: UserResponseDto,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.bookmarksService.getBookmarks(
-      req.user.id,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-    );
+    return this.bookmarksService.getBookmarks(user.id, page, limit);
   }
 
   @Get(':postId/check')
-  isBookmarked(@Req() req: any, @Param('postId') postId: string) {
-    return this.bookmarksService.isBookmarked(req.user.id, postId);
+  isBookmarked(
+    @currentUser() user: UserResponseDto,
+    @Param('postId', ParseUUIDPipe) postId: string,
+  ) {
+    return this.bookmarksService.isBookmarked(user.id, postId);
   }
 }

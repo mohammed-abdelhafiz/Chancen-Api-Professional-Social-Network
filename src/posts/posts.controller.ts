@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadRequestException,
   Body,
   Controller,
@@ -9,6 +9,7 @@
   ParseIntPipe,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseGuards,
@@ -16,17 +17,20 @@
 } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dtos/create-post.dto';
+import { UpdatePostDto } from './dtos/update-post.dto';
 import { CreateCommentDto } from './dtos/create-comment.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { currentUser } from 'src/auth/decorators/current-user.decorator';
 import { UserResponseDto } from 'src/users/dtos/user-response.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
+  @Throttle({ short: { ttl: 60000, limit: 15 } })
   @Post()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('image'))
@@ -55,6 +59,38 @@ export class PostsController {
     return this.postsService.getPosts(page, limit, user?.id);
   }
 
+  @Get('user/:userId')
+  @UseGuards(OptionalJwtAuthGuard)
+  getPostsByUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @currentUser() user: UserResponseDto | null,
+  ) {
+    return this.postsService.getPostsByUser(userId, page, limit, user?.id);
+  }
+
+  @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  getPostById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @currentUser() user: UserResponseDto | null,
+  ) {
+    return this.postsService.getPostById(id, user?.id);
+  }
+
+  @Put(':id')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('image'))
+  updatePost(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePostDto,
+    @UploadedFile() imageFile: Express.Multer.File,
+    @currentUser() user: UserResponseDto,
+  ) {
+    return this.postsService.updatePost(id, user.id, dto, imageFile);
+  }
+
   @Post(':id/like')
   @UseGuards(JwtAuthGuard)
   toggleLike(
@@ -73,6 +109,7 @@ export class PostsController {
     return this.postsService.deletePost(id, user.id);
   }
 
+  @Throttle({ short: { ttl: 60000, limit: 30 } })
   @Post(':id/comments')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('image'))

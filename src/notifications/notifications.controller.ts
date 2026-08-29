@@ -6,11 +6,14 @@ import {
   Param,
   Query,
   UseGuards,
-  Req,
-  Body,
+  ParseUUIDPipe,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { currentUser } from 'src/auth/decorators/current-user.decorator';
+import { UserResponseDto } from 'src/users/dtos/user-response.dto';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -19,34 +22,36 @@ export class NotificationsController {
 
   @Get()
   findAll(
-    @Req() req: any,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @currentUser() user: UserResponseDto,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.notificationsService.findAll(
-      req.user.id,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-    );
+    return this.notificationsService.findAll(user.id, page, limit);
   }
 
   @Get('unread-count')
-  getUnreadCount(@Req() req: any) {
-    return this.notificationsService.getUnreadCount(req.user.id);
-  }
-
-  @Patch(':id/read')
-  markAsRead(@Req() req: any, @Param('id') id: string) {
-    return this.notificationsService.markAsRead(req.user.id, id);
+  getUnreadCount(@currentUser() user: UserResponseDto) {
+    return this.notificationsService.getUnreadCount(user.id);
   }
 
   @Patch('read-all')
-  markAllAsRead(@Req() req: any) {
-    return this.notificationsService.markAllAsRead(req.user.id);
+  markAllAsRead(@currentUser() user: UserResponseDto) {
+    return this.notificationsService.markAllAsRead(user.id);
+  }
+
+  @Patch(':id/read')
+  markAsRead(
+    @currentUser() user: UserResponseDto,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notificationsService.markAsRead(user.id, id);
   }
 
   @Delete(':id')
-  delete(@Req() req: any, @Param('id') id: string) {
-    return this.notificationsService.delete(req.user.id, id);
+  delete(
+    @currentUser() user: UserResponseDto,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notificationsService.delete(user.id, id);
   }
 }

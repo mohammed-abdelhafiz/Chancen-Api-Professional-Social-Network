@@ -122,13 +122,13 @@ export class UsersService {
       if (oldResume?.publicId) {
         await this.cloudinaryService.deleteFile(
           oldResume.publicId,
-          oldResume.resourceType ?? 'image',
+          oldResume.resourceType ?? 'raw',
         );
       }
       const result = await this.cloudinaryService.uploadFile(
         files.resume[0],
         'chancen/users/resumes',
-        'image',
+        'raw',
       );
       data.resume = {
         url: result.secure_url,
@@ -182,6 +182,7 @@ export class UsersService {
       NotificationType.follow,
       currentUserId,
       'started following you',
+      `/profile/${currentUserId}`,
     );
 
     return {
@@ -219,8 +220,9 @@ export class UsersService {
       await this.notificationsService.create(
         targetUserId,
         NotificationType.connection_request,
-        currentUserId,
-        'sent you a connection request',
+      currentUserId,
+      'sent you a connection request',
+      '/my-network',
       );
 
       return {
@@ -253,6 +255,33 @@ export class UsersService {
           message: 'You are already connected',
         };
       }
+
+      if (connection.status === 'rejected') {
+        await this.prismaService.connection.delete({
+          where: {
+            senderId_receiverId: {
+              senderId: currentUserId,
+              receiverId: targetUserId,
+            },
+          },
+        });
+        await this.prismaService.connection.create({
+          data: {
+            senderId: currentUserId,
+            receiverId: targetUserId,
+          },
+        });
+        await this.notificationsService.create(
+          targetUserId,
+          NotificationType.connection_request,
+          currentUserId,
+          'sent you a connection request',
+          '/my-network',
+        );
+        return {
+          message: 'Connection request sent successfully',
+        };
+      }
     }
 
     // Target user already sent a request
@@ -283,12 +312,77 @@ export class UsersService {
           message: 'You are already connected',
         };
       }
+
+      if (connection.status === 'rejected') {
+        await this.prismaService.connection.delete({
+          where: {
+            senderId_receiverId: {
+              senderId: targetUserId,
+              receiverId: currentUserId,
+            },
+          },
+        });
+        await this.prismaService.connection.create({
+          data: {
+            senderId: currentUserId,
+            receiverId: targetUserId,
+          },
+        });
+        await this.notificationsService.create(
+          targetUserId,
+          NotificationType.connection_request,
+          currentUserId,
+          'sent you a connection request',
+          '/my-network',
+        );
+        return {
+          message: 'Connection request sent successfully',
+        };
+      }
     }
+
+    return {
+      message: 'Connection request sent successfully',
+    };
   }
+
+  async getConnectionStatus(currentUserId: string, targetUserId: string) {
+    if (currentUserId === targetUserId) {
+      return { status: 'self' };
+    }
+    const connection = await this.prismaService.connection.findFirst({
+      where: {
+        OR: [
+          { senderId: currentUserId, receiverId: targetUserId },
+          { senderId: targetUserId, receiverId: currentUserId },
+        ],
+      },
+    });
+
+    if (!connection) {
+      return { status: 'none' };
+    }
+
+    if (connection.status === 'accepted') {
+      return { status: 'connected' };
+    }
+
+    if (connection.status === 'pending') {
+      if (connection.senderId === currentUserId) {
+        return { status: 'pending_sent' };
+      } else {
+        return { status: 'pending_received' };
+      }
+    }
+
+    return { status: 'none' };
+  }
+
   async getConnectionRequests(userId: string) {
     return this.prismaService.connection.findMany({
       where: {
         receiverId: userId,
+        status: 'pending',
       },
       include: {
         sender: true,
@@ -324,6 +418,7 @@ export class UsersService {
       NotificationType.connection_accepted,
       currentUserId,
       'accepted your connection request',
+      `/profile/${currentUserId}`,
     );
 
     return {
@@ -357,34 +452,64 @@ export class UsersService {
   async getConnections(userId: string) {
     return this.prismaService.connection.findMany({
       where: {
-        receiverId: userId,
         status: 'accepted',
+        OR: [{ senderId: userId }, { receiverId: userId }],
       },
       include: {
         sender: true,
+        receiver: true,
       },
     });
   }
 
-  async getFollowers(userId: string) {
+  async getUserStats(userId: string) {
+    const [followersCount, followingCount, connectionsCount] =
+      await Promise.all([
+        this.prismaService.follow.count({ where: { followingId: userId } }),
+        this.prismaService.follow.count({ where: { followerId: userId } }),
+        this.prismaService.connection.count({
+          where: {
+            status: 'accepted',
+            OR: [{ senderId: userId }, { receiverId: userId }],
+          },
+        }),
+      ]);
+    return { followersCount, followingCount, connectionsCount };
+  }
+
+  async getFollowers(userId: string, page?: number, limit?: number) {
+    if (page && limit) {
+      const skip = (page - 1) * limit;
+      return this.prismaService.follow.findMany({
+        where: { followingId: userId },
+        include: { follower: true },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
+    }
     return this.prismaService.follow.findMany({
-      where: {
-        followingId: userId,
-      },
-      include: {
-        follower: true,
-      },
+      where: { followingId: userId },
+      include: { follower: true },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  getFollowing(userId: string) {
+  async getFollowing(userId: string, page?: number, limit?: number) {
+    if (page && limit) {
+      const skip = (page - 1) * limit;
+      return this.prismaService.follow.findMany({
+        where: { followerId: userId },
+        include: { following: true },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
+    }
     return this.prismaService.follow.findMany({
-      where: {
-        followerId: userId,
-      },
-      include: {
-        following: true,
-      },
+      where: { followerId: userId },
+      include: { following: true },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -394,9 +519,25 @@ export class UsersService {
         where: { followerId: currentUserId },
       })
     ).map((following) => following.followingId);
+
+    const pendingConnectionIds = (
+      await this.prismaService.connection.findMany({
+        where: {
+          OR: [{ senderId: currentUserId }, { receiverId: currentUserId }],
+          status: { in: ['pending', 'accepted'] },
+        },
+        select: { senderId: true, receiverId: true },
+      })
+    ).flatMap((c) => [c.senderId, c.receiverId]);
+
+    const excludeIds = [
+      ...new Set([...followingsIds, ...pendingConnectionIds, currentUserId]),
+    ];
+
     return this.prismaService.user.findMany({
-      where: { id: { notIn: [...followingsIds, currentUserId] } },
+      where: { id: { notIn: excludeIds } },
       take: 3,
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

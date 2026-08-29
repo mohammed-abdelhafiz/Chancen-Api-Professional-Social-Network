@@ -8,7 +8,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { MessagesService } from '../messages.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @WebSocketGateway({
   cors: {
@@ -16,17 +16,20 @@ import { MessagesService } from '../messages.service';
     credentials: true,
   },
 })
-export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class MessagesGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
   private userSockets = new Map<string, string[]>();
 
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
   handleConnection(client: Socket) {
-    const userId = client.handshake.auth?.userId;
+    const userId: string | undefined = client.handshake.auth?.userId;
     if (userId) {
+      (client as any).userId = userId;
       const sockets = this.userSockets.get(userId) || [];
       sockets.push(client.id);
       this.userSockets.set(userId, sockets);
@@ -35,7 +38,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   handleDisconnect(client: Socket) {
-    const userId = client.handshake.auth?.userId;
+    const userId = (client as any).userId || client.handshake.auth?.userId;
     if (userId) {
       const sockets = this.userSockets.get(userId) || [];
       const index = sockets.indexOf(client.id);
@@ -51,10 +54,22 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('joinConversation')
-  handleJoinConversation(
+  async handleJoinConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() conversationId: string,
   ) {
+    const userId = (client as any).userId || client.handshake.auth?.userId;
+    if (!userId) return;
+
+    // Verify user is participant of conversation
+    const conversation = await this.prismaService.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    if (!conversation) return;
+    if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+      return;
+    }
+
     client.join(`conversation:${conversationId}`);
   }
 
@@ -67,7 +82,9 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   broadcastToConversation(conversationId: string, message: any) {
-    this.server.to(`conversation:${conversationId}`).emit('newMessage', message);
+    this.server
+      .to(`conversation:${conversationId}`)
+      .emit('newMessage', message);
   }
 
   sendNotificationToUser(userId: string, notification: any) {
