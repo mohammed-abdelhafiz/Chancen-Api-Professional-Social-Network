@@ -114,15 +114,18 @@ export class PostsService {
       }),
     ]);
 
-    const mapPost = (post: any) => ({
-      ...post,
-      isLiked: currentUserId ? post.postLikes?.length > 0 : false,
-      isReposted: currentUserId ? post.reposts?.length > 0 : false,
-      isBookmarked: currentUserId ? post.bookmarks?.length > 0 : false,
-      postLikes: undefined,
-      reposts: undefined,
-      bookmarks: undefined,
-    });
+    const mapPost = (post: any) => {
+      if (!post) return null;
+      return {
+        ...post,
+        isLiked: currentUserId ? (post.postLikes?.length ?? 0) > 0 : false,
+        isReposted: currentUserId ? (post.reposts?.length ?? 0) > 0 : false,
+        isBookmarked: currentUserId ? (post.bookmarks?.length ?? 0) > 0 : false,
+        postLikes: undefined,
+        reposts: undefined,
+        bookmarks: undefined,
+      };
+    };
 
     const items = [
       ...posts.map((post: any) => ({
@@ -130,17 +133,19 @@ export class PostsService {
         feedItemId: `post-${post.id}`,
         feedCreatedAt: post.createdAt,
       })),
-      ...reposts.map((repost: any) => ({
-        ...mapPost(repost.post),
-        feedItemId: `repost-${repost.id}`,
-        feedCreatedAt: repost.createdAt,
-        repost: {
-          id: repost.id,
-          content: repost.content,
-          createdAt: repost.createdAt,
-          user: repost.user,
-        },
-      })),
+      ...reposts
+        .filter((repost: any) => Boolean(repost?.post))
+        .map((repost: any) => ({
+          ...mapPost(repost.post),
+          feedItemId: `repost-${repost.id}`,
+          feedCreatedAt: repost.createdAt,
+          repost: {
+            id: repost.id,
+            content: repost.content,
+            createdAt: repost.createdAt,
+            user: repost.user,
+          },
+        })),
     ]
       .sort(
         (left, right) =>

@@ -105,7 +105,6 @@ model RefreshToken {
 model Post {
   id        String   @id @default(uuid())
   content   String?
-  link      String?
   image     Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -118,7 +117,6 @@ model Post {
 
   @@index([userId])
   @@index([createdAt])
-  @@index([link])
 }
 
 model Comment {
