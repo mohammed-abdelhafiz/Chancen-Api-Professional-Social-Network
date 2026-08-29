@@ -47,7 +47,7 @@ async function bootstrap() {
   app.setGlobalPrefix('/api');
 
   const port = config.get<number>('PORT') || 5000;
-  await app.listen(port);
-  console.log(`Chancen API running on http://localhost:${port}/api`);
+  await app.listen(port, '0.0.0.0');
+  console.log(`Chancen API running on http://0.0.0.0:${port}/api`);
 }
 bootstrap();
