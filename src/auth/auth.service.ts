@@ -151,6 +151,9 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('invalid refresh token');
+    }
     const hashedRefreshToken = this.hashRefreshToken(refreshToken);
     const storedRefreshToken = await this.prismaService.refreshToken.findUnique(
       {
