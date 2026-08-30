@@ -61,15 +61,16 @@ export class AuthController {
       await this.authService.logout(refreshToken);
     }
 
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
     res.clearCookie('access_token', {
       httpOnly: true,
-      sameSite: 'none',
-      secure: true,
+      sameSite: isProduction ? 'none' : 'lax',
+      secure: isProduction,
     });
     res.clearCookie('refresh_token', {
       httpOnly: true,
-      sameSite: 'none',
-      secure: true,
+      sameSite: isProduction ? 'none' : 'lax',
+      secure: isProduction,
       path: '/api/auth',
     });
 
@@ -108,22 +109,25 @@ export class AuthController {
     this.sendAccessToken(access_token, res);
     this.sendRefreshToken(refresh_token, res);
 
-    return res.redirect(this.configService.getOrThrow('CLIENT_URL'));
+    const clientUrl = this.configService.getOrThrow<string>('CLIENT_URL');
+    return res.redirect(`${clientUrl}/feed`);
   }
 
   private sendAccessToken(token: string, res: Response) {
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
     res.cookie('access_token', token, {
       httpOnly: true,
-      sameSite: 'none',
-      secure: true,
+      sameSite: isProduction ? 'none' : 'lax',
+      secure: isProduction,
       maxAge: 15 * 60 * 1000,
     });
   }
   private sendRefreshToken(token: string, res: Response) {
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
     res.cookie('refresh_token', token, {
       httpOnly: true,
-      sameSite: 'none',
-      secure: true,
+      sameSite: isProduction ? 'none' : 'lax',
+      secure: isProduction,
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/api/auth',
     });
